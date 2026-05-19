@@ -2,8 +2,8 @@ import ccxt
 import time
 
 # --- 1. إعدادات الحساب ---
-API_KEY = "ضع_مفتاحك_هنا"
-API_SECRET = "ضع_سرك_هنا"
+API_KEY = "AVKLVzE3M9dEaQ8WoY"
+API_SECRET = "d8chxUfVzLGuclJPTilLmI8fdwtkO68PWuel"
 SYMBOL = "KAS/USDT"  # تأكد من إضافة علامة /
 
 # --- 2. إعدادات الشبكة (Grid) ---
