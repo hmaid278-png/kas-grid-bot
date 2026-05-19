@@ -1,47 +1,39 @@
 import ccxt
 import time
+import schedule
+import os
 
-# --- 1. إعدادات الحساب ---
-API_KEY = "AVKLVzE3M9dEaQ8WoY"
-API_SECRET = "d8chxUfVzLGuclJPTilLmI8fdwtkO68PWuel"
-SYMBOL = "KAS/USDT"  # تأكد من إضافة علامة /
+# استخدام المتغيرات البيئية لزيادة الأمان (بدل وضع المفاتيح داخل الكود)
+API_KEY = os.environ.get("AVKLVzE3M9dEaQ8WoY")
+API_SECRET = os.environ.get("d8chxUfVzLGuclJPTilLmI8fdwtkO68PWuel")
+SYMBOL = "KAS/USDT"
 
-# --- 2. إعدادات الشبكة (Grid) ---
-INVESTMENT = 100       # مبلغ 100 دولار
-GRID_COUNT = 5         # 5 خطوط تداول
-SPREAD = 0.02          # مسافة 2% بين كل خط
-
+# تهيئة المنصة
 exchange = ccxt.bybit({
-    'apiKey': API_KEY,
-    'secret': API_SECRET,
-    'enableRateLimit': True,
+    'apiKey': API_KEY, 
+    'secret': API_SECRET, 
+    'enableRateLimit': True, 
     'options': {'defaultType': 'spot'}
 })
 
-def start_bot():
-    print("Bot is active and monitoring KAS market...")
-    while True:
-        try:
-            # جلب السعر الحالي
-            ticker = exchange.fetch_ticker(SYMBOL)
-            price = ticker['last']
-            
-            # منطق بسيط: وضع أوامر شراء تحت السعر الحالي
-            buy_price = price * (1 - SPREAD)
-            amount = (INVESTMENT / GRID_COUNT) / buy_price
-            
-            print(f"Current Price: {price}. Placing buy order at {buy_price}")
-            
-            # تنفيذ الشراء
-            # exchange.create_limit_buy_order(SYMBOL, amount, buy_price)
-            
-            # ملاحظة: سطر الشراء أعلاه معطل حالياً (مسبوق بـ #) 
-            # لإزالة الـ # سيبدأ البوت بالشراء فعلياً
-            
-            time.sleep(300) # يكرر العملية كل 5 دقائق
-        except Exception as e:
-            print(f"Error: {e}")
-            time.sleep(60)
+def execute_trading_job():
+    print(f"[{time.strftime('%H:%M:%S')}] استيقظت لتفقد السوق...")
+    try:
+        ticker = exchange.fetch_ticker(SYMBOL)
+        price = ticker['last']
+        print(f"سعر كاسبا الحالي: {price}")
+        # هنا ستضع أوامر الشراء والبيع لاحقاً
+    except Exception as e:
+        print(f"خطأ: {e}")
 
-if __name__ == "__main__":
-    start_bot()
+# جدولة المهام (3 مرات يومياً)
+schedule.every().day.at("08:00").do(execute_trading_job)
+schedule.every().day.at("14:00").do(execute_trading_job)
+schedule.every().day.at("20:00").do(execute_trading_job)
+
+print("البوت يعمل الآن بنظام الـ Worker...")
+
+# الحلقة التي تمنع البوت من الإغلاق
+while True:
+    schedule.run_pending()
+    time.sleep(60)
