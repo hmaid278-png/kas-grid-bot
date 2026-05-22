@@ -1,1 +1,3 @@
-worker: python kas_bot_v3.py
+pybit==5.0.0
+
+
