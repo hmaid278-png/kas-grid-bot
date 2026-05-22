@@ -1,53 +1,54 @@
-import ccxt
-import time
-import schedule
 import os
-import sys
+import time
+import logging
+import ccxt
 
-# --- 1. الإعدادات ---
-# تأكد من إضافة API_KEY و API_SECRET في تبويب Variables داخل Railway
-API_KEY = os.environ.get("AVKLVzE3M9dEaQ8WoY")
-API_SECRET = os.environ.get("d8chxUfVzLGuclJPTilLmI8fdwtkO68PWuel")
-SYMBOL = "KAS/USDT"
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-# تهيئة المنصة
-try:
-    exchange = ccxt.bybit({
-        'apiKey': API_KEY, 
-        'secret': API_SECRET, 
-        'enableRateLimit': True, 
-        'options': {'defaultType': 'spot'}
-    })
-except Exception as e:
-    print(f"خطأ في تهيئة المنصة: {e}")
-    sys.exit(1)
+# إعدادات الاتصال
+exchange = ccxt.bybit({
+    'apiKey': os.getenv('AVKLVzE3M9dEaQ8WoY'),
+    'secret': os.getenv('d8chxUfVzLGuclJPTilLmI8fdwtkO68PWuel'),
+    'enableRateLimit': True,
+    'options': {'defaultType': 'spot'}
+})
 
-# --- 2. وظيفة التداول ---
-def execute_trading_job():
-    print(f"[{time.strftime('%H:%M:%S')}] استيقظت لتفقد السوق (جدولة 3 ساعات)...")
-    try:
-        ticker = exchange.fetch_ticker(SYMBOL)
-        price = ticker['last']
-        print(f"سعر كاسبا الحالي: {price}")
-        # هنا ستضع أوامر الشراء والبيع لاحقاً
-    except Exception as e:
-        print(f"خطأ أثناء تفقد السوق: {e}")
+SYMBOL = 'KAS/USDT'
+LOWER_BOUND = 0.034  # القاع
+UPPER_BOUND = 0.060  # القمة
+STEP = 0.002         # الفارق
+ORDER_VALUE = 15.0   # قيمة الصفقة بالدولار
 
-# --- 3. الجدولة (كل 3 ساعات) ---
-schedule.every(3).hours.do(execute_trading_job)
+def run_bot():
+    logging.info("بدء البوت بنظام النطاق الثابت (0.034 - 0.06)")
+    
+    while True:
+        try:
+            ticker = exchange.fetch_ticker(SYMBOL)
+            current_price = ticker['last']
+            logging.info(f"السعر الحالي: {current_price}")
+            
+            # التأكد من أن السعر داخل النطاق
+            if LOWER_BOUND <= current_price <= UPPER_BOUND:
+                # حساب مستويات الشراء والبيع بناءً على السعر الحالي
+                # الشراء يكون تحت السعر الحالي، والبيع فوقه
+                buy_price = round(current_price - STEP, 4)
+                sell_price = round(current_price + STEP, 4)
+                
+                amount = ORDER_VALUE / current_price
+                
+                # وضع أوامر معلقة
+                exchange.create_limit_buy_order(SYMBOL, amount, buy_price)
+                exchange.create_limit_sell_order(SYMBOL, amount, sell_price)
+                
+                logging.info(f"تم وضع أمر شراء عند {buy_price} وبيع عند {sell_price}")
+            else:
+                logging.warning("السعر خارج النطاق المحدد (0.034 - 0.06). البوت ينتظر...")
+                
+        except Exception as e:
+            logging.error(f"خطأ: {e}")
+            
+        time.sleep(3600) # انتظار ساعة قبل المحاولة التالية
 
-# --- 4. الحلقة الرئيسية (صمام الأمان) ---
-print("البوت يعمل الآن بنظام الـ Worker (جدولة كل 3 ساعات)...")
-
-while True:
-    try:
-        # تشغيل المهام المجدولة
-        schedule.run_pending()
-        
-        # النوم لمدة 10 دقائق بين كل فحص وآخر للحفاظ على استهلاك المعالج
-        # هذا يمنع البوت من أن يُصنف كـ "ميت" ويحمي رصيدك
-        time.sleep(600) 
-        
-    except Exception as e:
-        print(f"خطأ غير متوقع في الحلقة الرئيسية: {e}")
-        time.sleep(600)
+if __name__ == '__main__':
+    run_bot()
