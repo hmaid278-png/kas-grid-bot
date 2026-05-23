@@ -17,7 +17,7 @@ def run_trading_bot():
     symbol = 'KAS/USDT'
     budget = 100.0          # الميزانية الكلية
     target_profit = 1.0     # الربح المستهدف بالدولار لكل عملية
-    trade_size_usdt = 20.0  # حجم الصفقة الواحدة (تقسيم الـ 100 دولار إلى 5 صفقات)
+    trade_size_usdt = 20.0  # حجم الصفقة الواحدة
     
     print(f"🚀 بوت الربح الثابت (1$ لكل عملية) يعمل الآن على {symbol}...")
     
@@ -42,7 +42,7 @@ def run_trading_bot():
                 order = exchange.create_market_buy_order(symbol, trade_size_usdt / current_price)
                 bought_amount = float(order['amount'])
                 last_buy_price = float(order['average']) if 'average' in order else current_price
-                print(f"✅ تم الشراء بنجاح! الكمية: {bought_amount:.2f} بسعر: {last_buy_price:.5f}")
+                print(f"✅ تم الشراء بنجاح! الكمية: {bought_amount:.4f} بسعر: {last_buy_price:.5f}")
 
             # حالة: البوت يملك عملات (ينتظر هدف الربح)
             else:
@@ -50,4 +50,26 @@ def run_trading_bot():
                 # الصيغة: (سعر الشراء + (الربح المستهدف / الكمية))
                 sell_price_target = last_buy_price + (target_profit / bought_amount)
                 
-                print(f"📈 الحالي
+                print(f"📈 الحالي: {current_price:.5f} | هدف البيع: {sell_price_target:.5f} (للربح {target_profit}$)")
+                
+                # إذا وصل السعر لهدف الربح، قم بالبيع
+                if current_price >= sell_price_target:
+                    print(f"🎯 السعر وصل للهدف! جاري البيع...")
+                    exchange.create_market_sell_order(symbol, bought_amount)
+                    print(f"💰 تم جني ربح {target_profit} دولار بنجاح!")
+                    
+                    # إعادة ضبط المتغيرات للبدء من جديد
+                    bought_amount = 0
+                    last_buy_price = 0
+            
+        except Exception as e:
+            print(f"⚠️ خطأ في التداول: {e}")
+            
+        # فحص السوق كل دقيقة
+        time.sleep(60)
+
+if __name__ == "__main__":
+    if not api_key or not api_secret:
+        print("❌ خطأ: يرجى التأكد من إضافة BYBIT_API_KEY و BYBIT_API_SECRET في Railway Variables!")
+    else:
+        run_trading_bot()
