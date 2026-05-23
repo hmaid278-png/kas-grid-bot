@@ -15,61 +15,48 @@ exchange = ccxt.bybit({
 
 def run_trading_bot():
     symbol = 'KAS/USDT'
-    budget = 100.0          # الميزانية الكلية
-    target_profit = 1.0     # الربح المستهدف بالدولار لكل عملية
-    trade_size_usdt = 20.0  # حجم الصفقة الواحدة
+    target_profit = 1.0     
+    trade_size_usdt = 20.0  
     
-    print(f"🚀 بوت الربح الثابت (1$ لكل عملية) يعمل الآن على {symbol}...")
+    print(f"🚀 بوت الربح الثابت يعمل الآن على {symbol} (فحص كل 3 ساعات)...")
     
-    # متغيرات لتتبع الصفقة الحالية
     bought_amount = 0
     last_buy_price = 0
 
     while True:
         try:
-            # جلب آخر سعر
             ticker = exchange.fetch_ticker(symbol)
             current_price = ticker.get('last')
             
             if current_price is None:
                 continue
 
-            # حالة: البوت لا يملك عملات (جاهز للشراء)
             if bought_amount == 0:
-                print(f"🔎 السعر الحالي: {current_price:.5f} | جاري الشراء بمبلغ {trade_size_usdt}$...")
+                print(f"🔎 السعر الحالي: {current_price:.5f} | يبحث عن فرصة شراء...")
                 
-                # تنفيذ الشراء
                 order = exchange.create_market_buy_order(symbol, trade_size_usdt / current_price)
                 bought_amount = float(order['amount'])
                 last_buy_price = float(order['average']) if 'average' in order else current_price
-                print(f"✅ تم الشراء بنجاح! الكمية: {bought_amount:.4f} بسعر: {last_buy_price:.5f}")
+                print(f"✅ تم الشراء: {bought_amount:.4f} KAS بسعر {last_buy_price:.5f}")
 
-            # حالة: البوت يملك عملات (ينتظر هدف الربح)
             else:
-                # حساب سعر البيع المطلوب لتحقيق ربح 1 دولار
-                # الصيغة: (سعر الشراء + (الربح المستهدف / الكمية))
                 sell_price_target = last_buy_price + (target_profit / bought_amount)
+                print(f"📈 السعر: {current_price:.5f} | هدف البيع: {sell_price_target:.5f}")
                 
-                print(f"📈 الحالي: {current_price:.5f} | هدف البيع: {sell_price_target:.5f} (للربح {target_profit}$)")
-                
-                # إذا وصل السعر لهدف الربح، قم بالبيع
                 if current_price >= sell_price_target:
                     print(f"🎯 السعر وصل للهدف! جاري البيع...")
                     exchange.create_market_sell_order(symbol, bought_amount)
-                    print(f"💰 تم جني ربح {target_profit} دولار بنجاح!")
-                    
-                    # إعادة ضبط المتغيرات للبدء من جديد
-                    bought_amount = 0
-                    last_buy_price = 0
+                    print(f"💰 تم جني ربح 1 دولار!")
+                    bought_amount = 0 
             
         except Exception as e:
-            print(f"⚠️ خطأ في التداول: {e}")
+            print(f"⚠️ خطأ: {e}")
             
-        # فحص السوق كل دقيقة
-        time.sleep(60)
+        # زمن الانتظار: 10800 ثانية = 3 ساعات
+        time.sleep(10800)
 
 if __name__ == "__main__":
     if not api_key or not api_secret:
-        print("❌ خطأ: يرجى التأكد من إضافة BYBIT_API_KEY و BYBIT_API_SECRET في Railway Variables!")
+        print("❌ خطأ: يرجى التأكد من إضافة المفاتيح في Railway Variables!")
     else:
         run_trading_bot()
