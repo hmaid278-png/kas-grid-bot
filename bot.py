@@ -2,7 +2,7 @@ import ccxt
 import os
 import time
 
-# النظام سيقوم بسحب الرموز من إعدادات Railway Variables تلقائياً
+# سحب المفاتيح من متغيرات النظام (Railway Variables)
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
@@ -13,32 +13,41 @@ exchange = ccxt.bybit({
     'enableRateLimit': True,
 })
 
-def get_price(symbol):
-    try:
-        ticker = exchange.fetch_ticker(symbol)
-        return ticker.get('last')
-    except Exception as e:
-        print(f"خطأ في جلب السعر: {e}")
-        return None
-
-def run_bot():
-    symbol = 'BTC/USDT'  # يمكنك تغيير الزوج هنا
-    print(f"🚀 البوت بدأ العمل على زوج {symbol}...")
+def run_trading_bot():
+    symbol = 'KAS/USDT'
+    budget = 100.0          # الميزانية الكلية
+    target_profit = 1.0     # الربح المستهدف بالدولار لكل عملية
+    trade_size_usdt = 20.0  # حجم الصفقة الواحدة (تقسيم الـ 100 دولار إلى 5 صفقات)
     
-    while True:
-        price = get_price(symbol)
-        
-        # فحص آمن: نتحقق أن السعر موجود قبل عرضه لتجنب انهيار البوت
-        if price is not None:
-            print(f"📈 السعر الحالي لـ {symbol} هو: {price:.2f}")
-        else:
-            print("⚠️ تعذر جلب السعر، محاولة أخرى بعد 10 ثواني...")
-            
-        time.sleep(10)
+    print(f"🚀 بوت الربح الثابت (1$ لكل عملية) يعمل الآن على {symbol}...")
+    
+    # متغيرات لتتبع الصفقة الحالية
+    bought_amount = 0
+    last_buy_price = 0
 
-if __name__ == "__main__":
-    # فحص أولي: هل وجد النظام المفاتيح في ريلوي؟
-    if not api_key or not api_secret:
-        print("❌ خطأ: يرجى التأكد من إضافة BYBIT_API_KEY و BYBIT_API_SECRET في Railway Variables!")
-    else:
-        run_bot()
+    while True:
+        try:
+            # جلب آخر سعر
+            ticker = exchange.fetch_ticker(symbol)
+            current_price = ticker.get('last')
+            
+            if current_price is None:
+                continue
+
+            # حالة: البوت لا يملك عملات (جاهز للشراء)
+            if bought_amount == 0:
+                print(f"🔎 السعر الحالي: {current_price:.5f} | جاري الشراء بمبلغ {trade_size_usdt}$...")
+                
+                # تنفيذ الشراء
+                order = exchange.create_market_buy_order(symbol, trade_size_usdt / current_price)
+                bought_amount = float(order['amount'])
+                last_buy_price = float(order['average']) if 'average' in order else current_price
+                print(f"✅ تم الشراء بنجاح! الكمية: {bought_amount:.2f} بسعر: {last_buy_price:.5f}")
+
+            # حالة: البوت يملك عملات (ينتظر هدف الربح)
+            else:
+                # حساب سعر البيع المطلوب لتحقيق ربح 1 دولار
+                # الصيغة: (سعر الشراء + (الربح المستهدف / الكمية))
+                sell_price_target = last_buy_price + (target_profit / bought_amount)
+                
+                print(f"📈 الحالي
