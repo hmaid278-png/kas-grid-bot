@@ -16,46 +16,43 @@ def run_trading_bot():
     symbol = 'KAS/USDT'
     coin = 'KAS'
     
-    # --- قيد الميزانية الصارم ---
-    MAX_TRADING_BUDGET = 180.0  # الميزانية الإجمالية المسموح للبوت برؤيتها
-    TRADE_SIZE_USDT = 40.0      # حجم الصفقة الواحدة الثابت
-    TARGET_PROFIT_USDT = 2.0    # الربح المستهدف الصافي بالدولار عند البيع
+    # --- إعدادات إعادة استثمار الأرباح والتكبير التلقائي ---
+    MAX_ALLOWED_BALANCE = 200.0   # سقف الأمان للحساب (200$ فما دون)
+    TRADE_PERCENTAGE = 0.20       # حجم الصفقة = 20% من الرصيد المتاح (تكبر مع الأرباح)
+    TARGET_PROFIT_USDT = 2.0      # الربح المستهدف الصافي بالدولار عند البيع
     
     MIN_PRICE = 0.0300
     MAX_PRICE = 0.0633
     
-    print(f"🚀 تم تشغيل البوت الصارم.. الميزانية المتاحة للتداول: {MAX_TRADING_BUDGET}$ فقط.")
-    print(f"🔒 تم حظر وعزل باقي أصول المحفظة تلقائياً عن أمر البوت.")
+    print(f"🚀 تم تشغيل بوت إعادة استثمار الأرباح التراكمي المستمر..")
+    print(f"📈 حجم الصفقة سيكبر تلقائياً بنسبة 20% مع كل ربح يتحقق في المحفظة.")
 
     while True:
         try:
-            # جلب الرصيد الفعلي مع معالجة الحساب الموحد والتأكد من عدم وجود قيم فارغة None
+            # جلب الرصيد الفعلي من المنصة
             balance = exchange.fetch_balance()
-            
-            # فحص الرصيد الفعلي في أكثر من مكان (الحر، الإجمالي، أو الموحد) لضمان القراءة الصحيحة
             raw_usdt = balance.get('USDT', {})
             actual_usdt = raw_usdt.get('free', raw_usdt.get('total', 0.0))
             
-            # إذا أعادت المنصة قيمة فارغة لأي سبب، نحولها تلقائياً إلى صفر لتجنب خطأ الـ NoneType
             if actual_usdt is None:
                 actual_usdt = 0.0
             else:
                 actual_usdt = float(actual_usdt)
             
-            # حساب الرصيد الذي يسمح البوت لنفسه برؤيته فقط (خصم أموال الأمان 400$)
-            trading_allowed_usdt = actual_usdt - 400.0
-            if trading_allowed_usdt > MAX_TRADING_BUDGET:
-                trading_allowed_usdt = MAX_TRADING_BUDGET
-            elif trading_allowed_usdt < 0:
-                trading_allowed_usdt = 0.0
+            print(f"📊 الرصيد الحالي المتاح في الحساب: {actual_usdt:.2f}$")
+
+            # الحماية الصارمة: إذا تجاوز الرصيد المتاح 200 دولار، يتوقف البوت لحماية المحفظة
+            if actual_usdt > MAX_ALLOWED_BALANCE:
+                print(f"🛑 حظر تلقائي: الرصيد المتاح ({actual_usdt:.2f}$) أكبر من 200$. تم إيقاف العمل لحماية الـ 400$ الأخرى.")
+                print("-------------------------------------------------------------------------")
+                time.sleep(10800)
+                continue
 
             ticker = exchange.fetch_ticker(symbol)
             if not ticker or 'last' not in ticker:
                 time.sleep(60)
                 continue
             price = float(ticker['last'])
-
-            print(f" Total USDT in Account: {actual_usdt:.2f}$ | Budget Allowed for Bot: {trading_allowed_usdt:.2f}$")
 
             # جلب آخر عملية شراء قام بها البوت لمعرفة السعر والكمية الدقيقة
             trades = exchange.fetch_my_trades(symbol, limit=5)
@@ -64,7 +61,6 @@ def run_trading_bot():
 
             for t in reversed(trades):
                 if t['side'] == 'buy':
-                    # حماية إضافية من قيم None في سجل الصفقات
                     if t.get('price') is not None and t.get('amount') is not None:
                         last_buy_price = float(t['price'])
                         bot_purchased_qty = float(t['amount'])
@@ -73,47 +69,28 @@ def run_trading_bot():
             # تحديد حالة السوق بناءً على آخر عملية ناجحة مسجلة
             last_trade_side = 'sell'
             if trades:
-                # البحث عن آخر عملية صالحة (buy أو sell) وتجنب أي صفقات فارغة البيانات
                 for t in reversed(trades):
                     if t.get('side'):
                         last_trade_side = t['side']
                         break
             
-            # حالة 1: البوت لم يشترِ بعد، أو قام بالبيع مؤخراً
+            # حالة 1: الشراء (حجم ديناميكي يكبر مع الأرباح)
             if last_trade_side == 'sell' or bot_purchased_qty is None:
-                if trading_allowed_usdt >= TRADE_SIZE_USDT:
+                # حساب حجم الصفقة الجديد بناءً على رصيد المحفظة الحالي (إعادة الاستثمار التراكمي)
+                dynamic_trade_size = actual_usdt * TRADE_PERCENTAGE
+                
+                # تأمين: لضمان عدم تجاوز ميزانية الـ 200$ الأساسية في البداية
+                if dynamic_trade_size > 40.0 and actual_usdt <= 200.0:
+                    pass # السماح للحجم بالنمو إذا كان ناتجاً عن أرباح فعلية
+                elif dynamic_trade_size > 40.0:
+                    dynamic_trade_size = 40.0 # كبح الحجم لو كان الرصيد مرتفعاً لسبب خارجي
+
+                if actual_usdt >= dynamic_trade_size and dynamic_trade_size > 5.0:
                     if MIN_PRICE <= price <= MAX_PRICE:
-                        quantity_to_buy = TRADE_SIZE_USDT / price
-                        print(f"🔎 النظام جاهز. السعر الحالي: {price:.5f} | تنفيذ شراء بـ {TRADE_SIZE_USDT}$ فقط...")
+                        quantity_to_buy = dynamic_trade_size / price
+                        print(f"🔎 الرصيد مطابق للشروط. حجم الصفقة المحدث (تكبير تلقائي): {dynamic_trade_size:.2f}$")
+                        print(f"🛒 تنفيذ أمر شراء عند السعر الحالي: {price:.5f}...")
                         exchange.create_market_buy_order(symbol, quantity_to_buy)
-                        print("✅ تم الشراء المحدود بنجاح!")
+                        print("✅ تم الشراء التراكمي بنجاح!")
                     else:
-                        print(f"⚠️ السعر {price:.5f} خارج النطاق المسموح. انتظار...")
-                else:
-                    print("🎰 لا توجد سيولة كافية مخصصة للتداول حالياً (أموال الأمان محمية).")
-            
-            # حالة 2: البوت لديه صفقة شراء مفتوحة بـ 40$ ويقوم بمراقبتها
-            else:
-                sell_price_target = last_buy_price + (TARGET_PROFIT_USDT / bot_purchased_qty)
-                stop_loss_price = last_buy_price * 0.95
-                
-                print(f"⚙️ يراقب صفقة الشراء الحالية: السعر المشتري به {last_buy_price:.5f} | الكمية المحمية: {bot_purchased_qty:.2f} KAS")
-                print(f"📊 السعر الحالي: {price:.5f} | هدف البيع: {sell_price_target:.5f} | وقف الخسارة: {stop_loss_price:.5f}")
-                
-                if price >= sell_price_target:
-                    print("💰 السعر ضرب الهدف المستهدف! بيع كمية الصفقة المحددة فقط...")
-                    exchange.create_market_sell_order(symbol, bot_purchased_qty)
-                    print("✅ تم جني الربح بنجاح ودون مساس بالمدخرات!")
-                elif price <= stop_loss_price:
-                    print("⚠️ تفعيل وقف الخسارة لصفقة الـ 40$ لحماية رأس المال...")
-                    exchange.create_market_sell_order(symbol, bot_purchased_qty)
-                    print("⚠️ تم الخروج من الصفقة بنجاح.")
-
-        except Exception as e:
-            print(f"❌ خطأ في التنفيذ أو قراءة البيانات: {e}")
-            
-        print("-------------------------------------------------------------------------")
-        time.sleep(10800) # فحص دوري صارم كل 3 ساعات دائم ودون توقف
-
-if __name__ == "__main__":
-    run_trading_bot()
+                        print(f"⚠️
