@@ -29,12 +29,20 @@ def run_trading_bot():
 
     while True:
         try:
-            # جلب الرصيد الفعلي من المنصة
+            # جلب الرصيد الفعلي مع معالجة الحساب الموحد والتأكد من عدم وجود قيم فارغة None
             balance = exchange.fetch_balance()
-            actual_usdt = float(balance['free'].get('USDT', 0))
             
-            # حساب الرصيد الذي يسمح البوت لنفسه برؤيته فقط (خصم أموال الأمان)
-            # إذا كان الرصيد الكلي 563$، البوت سيتعامل فقط مع ما لا يتعدى الـ 180$
+            # فحص الرصيد الفعلي في أكثر من مكان (الحر، الإجمالي، أو الموحد) لضمان القراءة الصحيحة
+            raw_usdt = balance.get('USDT', {})
+            actual_usdt = raw_usdt.get('free', raw_usdt.get('total', 0.0))
+            
+            # إذا أعادت المنصة قيمة فارغة لأي سبب، نحولها تلقائياً إلى صفر لتجنب خطأ الـ NoneType
+            if actual_usdt is None:
+                actual_usdt = 0.0
+            else:
+                actual_usdt = float(actual_usdt)
+            
+            # حساب الرصيد الذي يسمح البوت لنفسه برؤيته فقط (خصم أموال الأمان 400$)
             trading_allowed_usdt = actual_usdt - 400.0
             if trading_allowed_usdt > MAX_TRADING_BUDGET:
                 trading_allowed_usdt = MAX_TRADING_BUDGET
@@ -56,16 +64,23 @@ def run_trading_bot():
 
             for t in reversed(trades):
                 if t['side'] == 'buy':
-                    last_buy_price = float(t['price'])
-                    bot_purchased_qty = float(t['amount']) # الكمية الفعليه التي اشتراها البوت بـ 40$
-                    break
+                    # حماية إضافية من قيم None في سجل الصفقات
+                    if t.get('price') is not None and t.get('amount') is not None:
+                        last_buy_price = float(t['price'])
+                        bot_purchased_qty = float(t['amount'])
+                        break
 
-            # حالة 1: البوت لم يشترِ بعد، أو قام بالبيع مؤخراً (لا توجد صفقات معلقة للبوت)
-            # نتحقق من ذلك إذا كانت آخر عملية في السجل هي "sell" أو لا يوجد كمية مسجلة
-            last_trade_side = trades[-1]['side'] if trades else 'sell'
+            # تحديد حالة السوق بناءً على آخر عملية ناجحة مسجلة
+            last_trade_side = 'sell'
+            if trades:
+                # البحث عن آخر عملية صالحة (buy أو sell) وتجنب أي صفقات فارغة البيانات
+                for t in reversed(trades):
+                    if t.get('side'):
+                        last_trade_side = t['side']
+                        break
             
+            # حالة 1: البوت لم يشترِ بعد، أو قام بالبيع مؤخراً
             if last_trade_side == 'sell' or bot_purchased_qty is None:
-                # التأكد من توفر سيولة كافية للشراء داخل حدود الـ 180$ المسموحة
                 if trading_allowed_usdt >= TRADE_SIZE_USDT:
                     if MIN_PRICE <= price <= MAX_PRICE:
                         quantity_to_buy = TRADE_SIZE_USDT / price
@@ -77,16 +92,14 @@ def run_trading_bot():
                 else:
                     print("🎰 لا توجد سيولة كافية مخصصة للتداول حالياً (أموال الأمان محمية).")
             
-            # حالة 2: البوت لديه صفقة شراء مفتوحة بـ 40$ ويقوم بمراقبتها لحجمها فقط
+            # حالة 2: البوت لديه صفقة شراء مفتوحة بـ 40$ ويقوم بمراقبتها
             else:
-                # حساب أهداف البيع والوقف بناءً على السعر الفعلي للشراء والكمية الدقيقة التي دخل بها البوت
                 sell_price_target = last_buy_price + (TARGET_PROFIT_USDT / bot_purchased_qty)
                 stop_loss_price = last_buy_price * 0.95
                 
                 print(f"⚙️ يراقب صفقة الشراء الحالية: السعر المشتري به {last_buy_price:.5f} | الكمية المحمية: {bot_purchased_qty:.2f} KAS")
                 print(f"📊 السعر الحالي: {price:.5f} | هدف البيع: {sell_price_target:.5f} | وقف الخسارة: {stop_loss_price:.5f}")
                 
-                # أخذ القرار للكمية المشتراة من قبل البوت فقط دون لمس بقية أصول المحفظة
                 if price >= sell_price_target:
                     print("💰 السعر ضرب الهدف المستهدف! بيع كمية الصفقة المحددة فقط...")
                     exchange.create_market_sell_order(symbol, bot_purchased_qty)
