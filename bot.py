@@ -88,5 +88,47 @@ def run_trading_bot():
             if trades:
                 for t in reversed(trades):
                     if t.get('side') == 'buy' and t.get('price') is not None:
-                        last
+                        last_buy_price = safe_float(t.get('price'))
+                        break
 
+            # حالة 1: تنفيذ أمر الشراء التراكمي (إذا لم يكن هناك صفقات مفتوحة)
+            if (actual_kas_in_wallet * price) < 5.0:
+                if actual_usdt >= dynamic_trade_size and dynamic_trade_size > 5.0:
+                    if MIN_PRICE <= price <= MAX_PRICE:
+                        quantity_to_buy = dynamic_trade_size / price
+                        print(f"🔎 الرصيد مطابق ومسموح تداوله. حجم صفقتك النامية: {dynamic_trade_size:.2f}$")
+                        print(f"🛒 إرسال أمر شراء ماركت لـ KAS عند السعر: {price:.5f}")
+                        exchange.create_market_buy_order(symbol, quantity_to_buy)
+                        print("✅ تم الشراء بنجاح وجاري بدء المراقبة لتأمين الربح!")
+                    else:
+                        print(f"⚠️ السعر الحالي {price:.5f} خارج النطاق المسموح لبوت الشراء.")
+                else:
+                    print("🎰 السيولة المتاحة في نطاق الـ 200$ غير كافية لفتح صفقة جديدة حالياً.")
+            
+            # حالة 2: مراقبة صفقة الشراء الحالية واقتناص أهداف البيع والأرباح
+            else:
+                current_qty = actual_kas_in_wallet
+                if current_qty > 0:
+                    sell_price_target = last_buy_price + (TARGET_PROFIT_USDT / current_qty)
+                    stop_loss_price = last_buy_price * 0.95
+                    
+                    print(f"⚙️ يراقب صفقة قائمة ومحمية بالكامل | كمية العقد: {current_qty:.2f} KAS")
+                    print(f"📊 السعر الآن: {price:.5f} | هدف البيع التراكمي: {sell_price_target:.5f} | وقف الخسارة: {stop_loss_price:.5f}")
+                    
+                    if price >= sell_price_target:
+                        print("💰 وصل السعر للهدف المخطط له! بيع كامل صفقة الأرباح الآن...")
+                        exchange.create_market_sell_order(symbol, current_qty)
+                        print("✅ تم جني الأرباح وضمها للكاش المتاح لتدويرها تلقائياً بالصفقة القادمة!")
+                    elif price <= stop_loss_price:
+                        print("⚠️ تفعيل أمر وقف الخسارة الفوري لحماية الحساب من الهبوط المتتالي...")
+                        exchange.create_market_sell_order(symbol, current_qty)
+                        print("⚠️ تم تأمين الحساب والخروج بنجاح.")
+
+        except Exception as e:
+            print(f"❌ خطأ في التنفيذ أو قراءة البيانات: {e}")
+            
+        print("-------------------------------------------------------------------------")
+        time.sleep(10800) # فحص مستمر وثابت كل 3 ساعات بدون توقف
+
+if __name__ == "__main__":
+    run_trading_bot()
