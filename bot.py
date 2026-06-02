@@ -2,6 +2,7 @@ import ccxt
 import os
 import time
 
+# تأكد من ضبط متغيرات البيئة في سيرفرك
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
@@ -25,7 +26,7 @@ def run_kas_bot():
     last_check_price = 0
     last_check_time = 0
     
-    print(f"🚀 KAS ACTIVE | 3H CHECK CYCLE | 8H BUY DECISION")
+    print(f"🚀 KAS ACTIVE | 3H CHECK | 8H BUY DECISION | DCA MODE")
 
     while True:
         try:
@@ -36,26 +37,30 @@ def run_kas_bot():
             current_price = safe_float(ticker.get('last'))
             current_time = time.time()
             
+            # الشراء (نظام المرحلتين)
             if asset_balance * current_price < 5.0:
-                # المقارنة كل 8 ساعات (28800 ثانية)
                 if current_time - last_check_time >= 28800:
                     sma_20 = get_sma(symbol)
                     if last_check_price != 0 and current_price < last_check_price and current_price < sma_20:
-                        if usdt_balance > 5.0:
-                            qty = round(usdt_balance / current_price, 4)
-                            print(f"📉 KAS BUYING @ {current_price}$")
-                            exchange.create_market_buy_order(symbol, qty)
+                        if usdt_balance > 10.0:
+                            # شراء 50% من الرصيد المتاح
+                            buy_amount = (usdt_balance * 0.5) / current_price
+                            print(f"📉 KAS PARTIAL BUY (50%) @ {current_price}$")
+                            exchange.create_market_buy_order(symbol, buy_amount)
                     last_check_price = current_price
                     last_check_time = current_time
+            # البيع (البيع الكامل عند الوصول للهدف)
             else:
-                my_trades = exchange.fetch_my_trades(symbol, limit=1)
-                avg_cost = safe_float(my_trades[0]['price']) if my_trades else current_price
+                my_trades = exchange.fetch_my_trades(symbol, limit=10)
+                # حساب متوسط سعر الشراء بناءً على الصفقات الأخيرة
+                avg_cost = sum([t['price'] for t in my_trades if t['side'] == 'buy']) / len([t for t in my_trades if t['side'] == 'buy']) if my_trades else current_price
                 target_sell_price = avg_cost * (1 + PROFIT_MARGIN)
+                
                 if current_price >= target_sell_price:
-                    print(f"💰 KAS SELLING @ {current_price}$")
+                    print(f"💰 KAS TARGET REACHED! SELLING ALL @ {current_price}$")
                     exchange.create_market_sell_order(symbol, asset_balance)
+                    
         except Exception as e: print(f"❌ KAS ERROR: {e}")
-        
         time.sleep(10800) # فحص الحالة كل 3 ساعات
 
 if __name__ == "__main__":
