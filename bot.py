@@ -2,17 +2,10 @@ import ccxt
 import os
 import time
 
-# إعداد الاتصال
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
-exchange = ccxt.bybit({
-    'apiKey': api_key,
-    'secret': api_secret,
-    'enableRateLimit': True,
-    'options': {'defaultType': 'unified'}
-})
-
+exchange = ccxt.bybit({'apiKey': api_key, 'secret': api_secret, 'enableRateLimit': True, 'options': {'defaultType': 'unified'}})
 exchange.load_markets()
 
 def safe_float(val, default=0.0):
@@ -20,45 +13,51 @@ def safe_float(val, default=0.0):
     try: return float(val)
     except (ValueError, TypeError): return default
 
-def run_trading_bot():
+def get_sma(symbol, period=20):
+    ohlcv = exchange.fetch_ohlcv(symbol, timeframe='1h', limit=period)
+    closes = [candle[4] for candle in ohlcv]
+    return sum(closes) / len(closes)
+
+def run_kas_bot():
     symbol = 'KAS/USDT'
     asset_name = 'KAS'
     PROFIT_MARGIN = 0.02   
+    last_check_price = 0
+    last_check_time = 0
     
-    print(f"🚀 {asset_name} BOT ACTIVATED | 2.0% PROFIT | 15 MIN INTERVAL")
+    print(f"🚀 KAS SMART BOT ACTIVATED | 3H CYCLE")
 
     while True:
         try:
             balance = exchange.fetch_balance()
             usdt_balance = safe_float(balance['total']['USDT'])
             asset_balance = safe_float(balance['total'][asset_name])
-            
             ticker = exchange.fetch_ticker(symbol)
-            last_price = safe_float(ticker.get('last'))
+            current_price = safe_float(ticker.get('last'))
+            current_time = time.time()
             
-            # الشراء بكامل الرصيد إذا كان الرصيد من العملة أقل من 5 دولار
-            if asset_balance * last_price < 5.0: 
-                if usdt_balance > 5.0:
-                    qty = round(usdt_balance / last_price, 4)
-                    print(f"🛒 BUYING {qty} {asset_name} @ {last_price}$")
-                    exchange.create_market_buy_order(symbol, qty)
-            
-            # المراقبة لهدف 2% بناءً على تكلفة الشراء الحقيقية
+            # الشراء
+            if asset_balance * current_price < 5.0:
+                if current_time - last_check_time >= 10800:
+                    sma_20 = get_sma(symbol)
+                    if last_check_price != 0 and current_price < last_check_price and current_price < sma_20:
+                        if usdt_balance > 5.0:
+                            qty = round(usdt_balance / current_price, 4)
+                            print(f"📉 KAS DIP & SMA DETECTED! BUYING {qty} @ {current_price}$")
+                            exchange.create_market_buy_order(symbol, qty)
+                    last_check_price = current_price
+                    last_check_time = current_time
+            # البيع
             else:
                 my_trades = exchange.fetch_my_trades(symbol, limit=1)
-                avg_cost = safe_float(my_trades[0]['price']) if my_trades else last_price
+                avg_cost = safe_float(my_trades[0]['price']) if my_trades else current_price
                 target_sell_price = avg_cost * (1 + PROFIT_MARGIN)
-                
-                print(f"⚙️ MONITORING {asset_name} | COST: {avg_cost:.4f}$ | TARGET: {target_sell_price:.4f}$")
-                
-                if last_price >= target_sell_price:
-                    print("💰 TARGET REACHED! SELLING...")
+                if current_price >= target_sell_price:
+                    print(f"💰 KAS TARGET REACHED! SELLING...")
                     exchange.create_market_sell_order(symbol, asset_balance)
-
-        except Exception as e:
-            print(f"❌ ERROR in {asset_name}: {e}")
-            
-        time.sleep(900) 
+        except Exception as e: print(f"❌ KAS ERROR: {e}")
+        
+        time.sleep(10800) # النوم لمدة 3 ساعات
 
 if __name__ == "__main__":
-    run_trading_bot()
+    run_kas_bot()
