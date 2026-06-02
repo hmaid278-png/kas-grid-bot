@@ -25,7 +25,7 @@ def run_kas_bot():
     last_check_price = 0
     last_check_time = 0
     
-    print(f"🚀 KAS BOT: 3H CHECK | 21H BUY DECISION")
+    print(f"🚀 KAS ACTIVE | 3H CHECK CYCLE | 8H BUY DECISION")
 
     while True:
         try:
@@ -37,26 +37,26 @@ def run_kas_bot():
             current_time = time.time()
             
             if asset_balance * current_price < 5.0:
-                # شرط الـ 21 ساعة للشراء
-                if current_time - last_check_time >= 75600:
+                # المقارنة كل 8 ساعات (28800 ثانية)
+                if current_time - last_check_time >= 28800:
                     sma_20 = get_sma(symbol)
                     if last_check_price != 0 and current_price < last_check_price and current_price < sma_20:
                         if usdt_balance > 5.0:
                             qty = round(usdt_balance / current_price, 4)
-                            print(f"📉 BUYING KAS @ {current_price}$")
+                            print(f"📉 KAS BUYING @ {current_price}$")
                             exchange.create_market_buy_order(symbol, qty)
                     last_check_price = current_price
                     last_check_time = current_time
             else:
-                # البيع فوراً عند تحقيق الهدف
                 my_trades = exchange.fetch_my_trades(symbol, limit=1)
                 avg_cost = safe_float(my_trades[0]['price']) if my_trades else current_price
                 target_sell_price = avg_cost * (1 + PROFIT_MARGIN)
                 if current_price >= target_sell_price:
-                    print(f"💰 SELLING KAS @ {current_price}$")
+                    print(f"💰 KAS SELLING @ {current_price}$")
                     exchange.create_market_sell_order(symbol, asset_balance)
         except Exception as e: print(f"❌ KAS ERROR: {e}")
-        time.sleep(10800) # فحص كل 3 ساعات
+        
+        time.sleep(10800) # فحص الحالة كل 3 ساعات
 
 if __name__ == "__main__":
     run_kas_bot()
