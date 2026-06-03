@@ -2,9 +2,9 @@ import ccxt
 import os
 import time
 
+# إعدادات الاتصال
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
-
 exchange = ccxt.bybit({'apiKey': api_key, 'secret': api_secret, 'enableRateLimit': True, 'options': {'defaultType': 'unified'}})
 exchange.load_markets()
 
@@ -25,7 +25,7 @@ def run_kas_bot():
     last_check_price = 0
     last_check_time = 0
     
-    print(f"🚀 KAS ACTIVE | COMPOUNDING GROWTH MODE")
+    print(f"🚀 KAS ACTIVE | COMPOUNDING 50% BUDGET | SMA-20 DCA")
 
     while True:
         try:
@@ -36,17 +36,21 @@ def run_kas_bot():
             current_price = safe_float(ticker.get('last'))
             current_time = time.time()
             
+            # الشراء الذكي مع تخصيص 50% من المحفظة
             if asset_balance * current_price < 5.0:
-                if current_time - last_check_time >= 28800:
+                if current_time - last_check_time >= 28800: # 8 ساعات للقرار
                     sma_20 = get_sma(symbol)
                     if last_check_price != 0 and current_price < last_check_price and current_price < sma_20:
-                        if usdt_balance > 10.0:
-                            # إعادة استثمار 95% من الرصيد (أسلوب أسي)
-                            buy_amount = (usdt_balance * 0.95) / current_price
-                            print(f"📈 KAS COMPOUND BUY (95%) @ {current_price}$")
+                        # الميزانية المخصصة لهذا البوت 50% من الإجمالي
+                        my_budget = usdt_balance * 0.50
+                        if my_budget > 10.0:
+                            # إعادة استثمار 95% من الحصة المخصصة
+                            buy_amount = (my_budget * 0.95) / current_price
+                            print(f"📈 KAS COMPOUND BUY | Budget Used: {my_budget}$ @ {current_price}$")
                             exchange.create_market_buy_order(symbol, buy_amount)
                     last_check_price = current_price
                     last_check_time = current_time
+            # البيع الذكي
             else:
                 my_trades = exchange.fetch_my_trades(symbol, limit=10)
                 avg_cost = sum([t['price'] for t in my_trades if t['side'] == 'buy']) / len([t for t in my_trades if t['side'] == 'buy']) if my_trades else current_price
@@ -57,7 +61,7 @@ def run_kas_bot():
                     exchange.create_market_sell_order(symbol, asset_balance)
                     
         except Exception as e: print(f"❌ KAS ERROR: {e}")
-        time.sleep(10800)
+        time.sleep(10800) # فحص كل 3 ساعات
 
 if __name__ == "__main__":
     run_kas_bot()
